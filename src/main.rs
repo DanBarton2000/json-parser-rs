@@ -294,7 +294,6 @@ fn main() -> std::io::Result<()>  {
     let lexer = Lexer::new(buffer);
     let mut syntax_analyser = SyntaxAnalyser::new(lexer);
 
-    println!("{:?}", syntax_analyser.parse());
-
-    Ok(())
+    let valid = syntax_analyser.parse();
+    std::process::exit(!valid as i32);
 }
