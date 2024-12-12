@@ -14,6 +14,8 @@ enum TokenType {
     Null,
     Colon,
     Comma,
+    LeftSquareBracket,
+    RightSquareBracket,
     Other
 }
 
@@ -154,6 +156,8 @@ impl Lexer {
                 '}' => { self.add_token(TokenType::RightBrace); }
                 ':' => { self.add_token(TokenType::Colon); }
                 ',' => { self.add_token(TokenType::Comma); }
+                '[' => { self.add_token(TokenType::LeftSquareBracket); }
+                ']' => { self.add_token(TokenType::RightSquareBracket); }
                 '"' => {
                     self.next_character();
                     while let Some(ch) = self.current_char {
@@ -230,9 +234,7 @@ impl SyntaxAnalyser {
                 if !self.value() { return false; }
             }
 
-            if !self.match_token(TokenType::Comma) {
-                break;
-            }
+            if !self.match_token(TokenType::Comma) { break; }
         }
 
         if !self.match_token(TokenType::RightBrace) { return false; }
@@ -246,7 +248,22 @@ impl SyntaxAnalyser {
         if self.match_token(TokenType::False) { return true; }
         if self.match_token(TokenType::Null) { return true; }
         if self.object() { return true; }
+        if self.array() { return true; }
         false
+    }
+
+    fn array(&mut self) -> bool {
+        if !self.match_token(TokenType::LeftSquareBracket) { return false; }
+
+        if self.value() && self.match_token(TokenType::Comma) {
+            loop {
+                if !self.value() { return false; }
+                if !self.match_token(TokenType::Comma) { break; }
+            }
+        }
+
+        if !self.match_token(TokenType::RightSquareBracket) { return false; }
+        true
     }
 
     fn match_token(&mut self, token_type: TokenType) -> bool {
