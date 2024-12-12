@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{stdin, BufRead, BufReader};
 use std::rc::Rc;
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -24,7 +24,7 @@ impl Token {
 }
 
 struct Lexer {
-    buf_reader: BufReader<File>,
+    buf_reader: Box<dyn BufRead>,
     tokens: Vec<Rc<Token>>,
     current_line: Option<String>,
     current_char: Option<char>,
@@ -34,8 +34,8 @@ struct Lexer {
     current_token: usize
 }
 
-impl<'a> Lexer {
-    fn new(mut buf_reader: BufReader<File>) -> Lexer {
+impl Lexer {
+    fn new(mut buf_reader: Box<dyn BufRead>) -> Lexer {
         let line = &mut "".to_string();
         buf_reader.read_line(line).expect("Failed to read first line");
         Lexer {
@@ -82,7 +82,7 @@ impl<'a> Lexer {
             match c {
                 '{' => { self.add_token(TokenType::LeftBrace); }
                 '}' => { self.add_token(TokenType::RightBrace); }
-                '\n' => { return; }
+                '\n' => { }
                 _ => { self.add_token(TokenType::Other); }
             }
         } else {
@@ -106,7 +106,7 @@ impl<'a> Lexer {
     }
 
     fn next_token(&mut self) -> Option<Rc<Token>> {
-        if &self.current_token >= &self.tokens.len() { return None; }
+        if self.current_token >= self.tokens.len() { return None; }
 
         let token = self.tokens[self.current_token].clone();
         self.current_token += 1;
@@ -155,9 +155,16 @@ impl SyntaxAnalyser {
 }
 
 fn main() -> std::io::Result<()>  {
-    let file = File::open(".\\tests\\step1\\valid.json")?;
-    let reader = BufReader::new(file);
-    let lexer = Lexer::new(reader);
+    let args: Vec<String> = std::env::args().collect();
+
+    let buffer: Box<dyn BufRead> = if args.len() == 1 {
+        Box::new(BufReader::new(stdin()))
+    } else {
+        let file = File::open(&args[1])?;
+        Box::new(BufReader::new(file))
+    };
+
+    let lexer = Lexer::new(buffer);
     let mut syntax_analyser = SyntaxAnalyser::new(lexer);
 
     println!("{:?}", syntax_analyser.parse());
