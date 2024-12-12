@@ -6,6 +6,9 @@ use std::rc::Rc;
 enum TokenType {
     LeftBrace,
     RightBrace,
+    String,
+    Colon,
+    Comma,
     Other
 }
 
@@ -58,6 +61,7 @@ impl Lexer {
                 self.current_line = Some(new_line.clone());
                 self.current_char = Some('\n');
                 self.current_line_number += 1;
+                self.current_offset = 0;
             } else {
                 self.current_char = line.chars().nth(self.current_offset);
                 self.current_offset += 1;
@@ -82,7 +86,17 @@ impl Lexer {
             match c {
                 '{' => { self.add_token(TokenType::LeftBrace); }
                 '}' => { self.add_token(TokenType::RightBrace); }
-                '\n' => { }
+                ':' => { self.add_token(TokenType::Colon); }
+                ',' => { self.add_token(TokenType::Comma); }
+                '"' => {
+                    self.next_character();
+                    while let Some(ch) = self.current_char {
+                        if ch == '"' { break; }
+                        self.next_character();
+                    }
+                    self.add_token(TokenType::String)
+                }
+                '\n' | ' ' => { }
                 _ => { self.add_token(TokenType::Other); }
             }
         } else {
@@ -135,8 +149,24 @@ impl SyntaxAnalyser {
 
     fn object(&mut self) -> bool {
         if !self.match_token(TokenType::LeftBrace) { return false; }
+
+        loop {
+            if self.match_token(TokenType::String) {
+                if !self.match_token(TokenType::Colon) { return false; }
+                if !self.value() { return false; }
+            }
+
+            if !self.match_token(TokenType::Comma) {
+                break;
+            }
+        }
+
         if !self.match_token(TokenType::RightBrace) { return false; }
         true
+    }
+
+    fn value(&mut self) -> bool {
+        self.match_token(TokenType::String)
     }
 
     fn match_token(&mut self, token_type: TokenType) -> bool {
