@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{stdin, BufRead, BufReader};
 use std::rc::Rc;
@@ -7,6 +8,10 @@ enum TokenType {
     LeftBrace,
     RightBrace,
     String,
+    Number,
+    True,
+    False,
+    Null,
     Colon,
     Comma,
     Other
@@ -34,13 +39,20 @@ struct Lexer {
     current_offset: usize,
     current_line_number: usize,
     start: usize,
-    current_token: usize
+    current_token: usize,
+    keywords: HashMap<String, TokenType>
 }
 
 impl Lexer {
     fn new(mut buf_reader: Box<dyn BufRead>) -> Lexer {
         let line = &mut "".to_string();
         buf_reader.read_line(line).expect("Failed to read first line");
+
+        let mut map = HashMap::new();
+        map.insert("true".to_string(), TokenType::True);
+        map.insert("false".to_string(), TokenType::False);
+        map.insert("null".to_string(), TokenType::Null);
+
         Lexer {
             buf_reader,
             tokens: vec![],
@@ -49,7 +61,8 @@ impl Lexer {
             current_offset: 0,
             current_line_number: 0,
             start: 0,
-            current_token: 0
+            current_token: 0,
+            keywords: map
         }
     }
 
@@ -71,11 +84,64 @@ impl Lexer {
         }
     }
 
+    fn peek(&mut self) -> Option<char> {
+        if let Some(line) = &self.current_line {
+            if self.current_offset >= line.chars().count() {
+                Some('\n')
+            } else {
+                line.chars().nth(self.current_offset)
+            }
+        } else {
+            None
+        }
+    }
+
     fn add_token(&mut self, token_type: TokenType) {
         if let Some(line) = &self.current_line {
             self.tokens.push(Rc::new(Token::new(token_type, line[self.start..self.current_offset].to_string())))
         } else {
             panic!("Tried to add token but the current line is None");
+        }
+    }
+
+    fn next_num(&mut self) {
+        while let Some(_) = self.current_char {
+            if self.peek().is_some_and(|x| !x.is_numeric()) { break; }
+            self.next_character();
+        }
+    }
+
+    fn number(&mut self) {
+        self.next_num();
+
+        if let Some(dot) = self.peek() {
+            if dot == '.' {
+                self.next_character();
+                self.next_character();
+                if let Some(n) = self.current_char {
+                    if n.is_numeric() {
+                        self.next_num();
+                    }
+                }
+            }
+        }
+
+        self.add_token(TokenType::Number);
+    }
+
+    fn keyword(&mut self) {
+        while let Some(_) = self.current_char {
+            if self.peek().is_some_and(|x| !x.is_alphabetic()) { break; }
+            self.next_character();
+        }
+        if let Some(line) = &self.current_line {
+            if let Some(token) = self.keywords.get(&line[self.start..self.current_offset].to_string()) {
+                self.add_token(token.clone());
+            } else {
+                self.add_token(TokenType::Other);
+            }
+        } else {
+            self.add_token(TokenType::Other);
         }
     }
 
@@ -97,7 +163,15 @@ impl Lexer {
                     self.add_token(TokenType::String)
                 }
                 '\n' | ' ' => { }
-                _ => { self.add_token(TokenType::Other); }
+                _ => {
+                    if c.is_numeric() {
+                        self.number();
+                    } else if c.is_alphabetic() {
+                        self.keyword();
+                    } else {
+                        self.add_token(TokenType::Other);
+                    }
+                }
             }
         } else {
             panic!("Next character is none :o");
@@ -166,7 +240,13 @@ impl SyntaxAnalyser {
     }
 
     fn value(&mut self) -> bool {
-        self.match_token(TokenType::String)
+        if self.match_token(TokenType::String) { return true; }
+        if self.match_token(TokenType::Number) { return true; }
+        if self.match_token(TokenType::True) { return true; }
+        if self.match_token(TokenType::False) { return true; }
+        if self.match_token(TokenType::Null) { return true; }
+        if self.object() { return true; }
+        false
     }
 
     fn match_token(&mut self, token_type: TokenType) -> bool {
